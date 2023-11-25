@@ -6,6 +6,8 @@ using AuctionService.DTOs;
 using Microsoft.EntityFrameworkCore;
 using AuctionService.Entities;
 using AutoMapper.QueryableExtensions;
+using MassTransit;
+using Contracts;
 
 namespace AuctionService.Controllers;
 
@@ -15,14 +17,17 @@ public class AuctionsController : ControllerBase
 {
     private readonly AuctionDbContext _context;
     private readonly IMapper _mapper;
+    private readonly IPublishEndpoint _publishEndpoint;
 
     public AuctionsController(  
         AuctionDbContext context,
-        IMapper mapper
+        IMapper mapper,
+        IPublishEndpoint publishEndpoint
     )
     {
         _context = context;
         _mapper = mapper;
+        _publishEndpoint = publishEndpoint;
     }
 
     [HttpGet]
@@ -56,11 +61,16 @@ public class AuctionsController : ControllerBase
         auction.Seller = "test";
 
         _context.Auctions.Add(auction);
+
+        var newAuction = _mapper.Map<AuctionDto>(auction);
+        
+        await _publishEndpoint.Publish(_mapper.Map<AuctionCreated>(newAuction));
+
         var result = await _context.SaveChangesAsync() > 0;
 
         if (!result) return BadRequest("Failed to create auction");
 
-        return CreatedAtAction(nameof(GetAuctionById), new { auction.Id }, _mapper.Map<AuctionDto>(auction));
+        return CreatedAtAction(nameof(GetAuctionById), new { auction.Id }, newAuction);
     }
 
     [HttpPut("{id}")]
@@ -79,9 +89,10 @@ public class AuctionsController : ControllerBase
         auction.Item.Year = updateAuctionDto.Year ?? auction.Item.Year;
         auction.Item.Mileage = updateAuctionDto.Mileage ?? auction.Item.Mileage;
 
-        // _mapper.Map(updateAuctionDto, auction);
-
+        await _publishEndpoint.Publish(_mapper.Map<AuctionUpdated>(auction));
+        
         var result = await _context.SaveChangesAsync() > 0;
+        
 
         if (result) return Ok();
 
@@ -101,6 +112,8 @@ public class AuctionsController : ControllerBase
         }
 
         _context.Auctions.Remove(auction);
+
+        await _publishEndpoint.Publish<AuctionDeleted>(new { Id = auction.Id.ToString() });
 
         var result = await _context.SaveChangesAsync() > 0;
 

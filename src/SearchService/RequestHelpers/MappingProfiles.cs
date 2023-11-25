@@ -1,13 +1,13 @@
-﻿// using AutoMapper;
-// using Contracts;
+﻿using AutoMapper;
+using Contracts;
 
-// namespace SearchService;
+namespace SearchService;
 
-// public class MappingProfiles : Profile
-// {
-//     public MappingProfiles()
-//     {
-//         CreateMap<AuctionCreated, Item>();
-//         CreateMap<AuctionUpdated, Item>();
-//     }
-// }
+public class MappingProfiles : Profile
+{
+    public MappingProfiles()
+    {
+        CreateMap<AuctionCreated, Item>();
+        CreateMap<AuctionUpdated, Item>();
+    }
+}
