@@ -48,7 +48,7 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:80
       - RabbitMq__Host=rabbitmq
-      - ConnectionStrings__MongoDbConnection=mongodb://localhost:27017
+      - ConnectionStrings__MongoDbConnection=mongodb://mongodb:27017
       - AuctionServiceUrl=http://auction-svc
     ports:
       - 7002:80
