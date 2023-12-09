@@ -1,28 +1,38 @@
+networks:
+  custom:
+    ipam:
+      config:
+        - subnet: 10.5.0.0/16
+
 services:
   postgres:
     image: postgres
+    environment:
+      - POSTGRES_PASSWORD=postgrespw
     ports:
       - 5432:5432
-    environment:
-      # POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgrespw
-      # POSTGRES_DB: postgres
     volumes:
-      - /var/lib/postgresql/data
+      - /var/lib/postresql/data
+    networks:
+      custom:
   mongodb:
     image: mongo
     environment:
-      - MONGO_INITDB_USERNAME=root
-      - MONGO_INITDB_PASSWORD=mongopw
+      - MONGO_INITDB_ROOT_USERNAME=root
+      - MONGO_INITDB_ROOT_PASSWORD=mongopw
     ports:
       - 27017:27017
     volumes:
       - /var/lib/mongodb/data
+    networks:
+      custom:
   rabbitmq:
     image: rabbitmq:3-management-alpine
     ports:
       - 5672:5672
       - 15672:15672
+    networks:
+      custom:
   auction-svc:
     image: trycatchlearn/auction-svc:latest
     build: 
@@ -30,20 +40,23 @@ services:
       dockerfile: src/AuctionService/Dockerfile
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
-      - ASPNETCORE_URLS=http://+:80
+      - ASPNETCORE_URLS=http://+:81
+      - ASPNETCORE_URLS=http://+:7777
       - RabbitMq__Host=rabbitmq
       - ConnectionStrings__DefaultConnection=Server=postgres:5432;User Id=postgres;Password=postgrespw;Database=auctions
       - IdentityServiceUrl=http://identity-svc
       - Kestrel__Endpoints__Grpc__Protocols=Http2
       - Kestrel__Endpoints__Grpc__Url=http://+:7777
       - Kestrel__Endpoints__WebApi__Protocols=Http1
-      - Kestrel__Endpoints__WebApi__Url=Http://+:80
+      - Kestrel__Endpoints__WebApi__Url=Http://+:81
     ports:
-      - 7001:80
+      - 7001:81
       - 7777:7777
     depends_on:
       - postgres
       - rabbitmq
+    networks:
+      custom:
   search-svc:
     image: trycatchlearn/search-svc:latest
     build: 
@@ -51,15 +64,17 @@ services:
       dockerfile: src/SearchService/Dockerfile
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
-      - ASPNETCORE_URLS=http://+:80
+      - ASPNETCORE_URLS=http://+:81
       - RabbitMq__Host=rabbitmq
-      - ConnectionStrings__MongoDbConnection=mongodb://mongodb:27017
+      - ConnectionStrings__MongoDbConnection=mongodb://root:mongopw@mongodb
       - AuctionServiceUrl=http://auction-svc
     ports:
-      - 7002:80
+      - 7002:81
     depends_on:
       - mongodb
       - rabbitmq
+    networks:
+      custom:
   identity-svc:
     image: trycatchlearn/identity-svc:latest
     build: 
@@ -67,12 +82,15 @@ services:
       dockerfile: src/IdentityService/Dockerfile
     environment:
       - ASPNETCORE_ENVIRONMENT=Docker
-      - ASPNETCORE_URLS=http://+:80
+      - ASPNETCORE_URLS=http://+:81
+      - ClientApp=http://app.carsties.com
       - ConnectionStrings__DefaultConnection=Server=postgres:5432;User Id=postgres;Password=postgrespw;Database=identity
-    ports:
-      - 5000:80
+      - VIRTUAL_HOST=id.carsties.com
     depends_on:
       - postgres
+    networks:
+      custom:
+        ipv4_address: 10.5.0.200
   gateway-svc:
     image: trycatchlearn/gateway-svc:latest
     build: 
@@ -80,9 +98,11 @@ services:
       dockerfile: src/GatewayService/Dockerfile
     environment:
       - ASPNETCORE_ENVIRONMENT=Docker
-      - ASPNETCORE_URLS=http://+:80
-    ports:
-      - 6001:80
+      - ASPNETCORE_URLS=http://+:81
+      - ClientApp=https://app.carsties.com
+      - VIRTUAL_HOST=api.carsties.com
+    networks:
+      custom:
   bid-svc:
     image: trycatchlearn/bid-svc:latest
     build: 
@@ -90,16 +110,18 @@ services:
       dockerfile: src/BiddingService/Dockerfile
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
-      - ASPNETCORE_URLS=http://+:80
+      - ASPNETCORE_URLS=http://+:81
       - RabbitMq__Host=rabbitmq
-      - ConnectionStrings__BidDbConnection=mongodb://mongodb:27017
+      - ConnectionStrings__BidDbConnection=mongodb://root:mongopw@mongodb
       - IdentityServiceUrl=http://identity-svc
       - GrpcAuction=http://auction-svc:7777
     ports:
-      - 7003:80
+      - 7003:81
     depends_on:
       - mongodb
       - rabbitmq
+    networks:
+      custom:
   notify-svc:
     image: trycatchlearn/notify-svc:latest
     build: 
@@ -107,10 +129,41 @@ services:
       dockerfile: src/NotificationService/Dockerfile
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
-      - ASPNETCORE_URLS=http://+:80
+      - ASPNETCORE_URLS=http://+:81
       - RabbitMq__Host=rabbitmq
     ports:
-      - 7004:80
+      - 7004:81
     depends_on:
       - rabbitmq
-
+    networks:
+      custom:
+  web-app:
+    image: trycatchlearn/web-app
+    build: 
+      context: .
+      dockerfile: frontend/web-app/Dockerfile
+    volumes:
+      - /var/lib/web/data
+    extra_hosts:
+      - id.carsties.com:10.5.0.200
+    environment:
+      - NEXTAUTH_SECRET=somethingreallyreallysecret
+      - NEXTAUTH_URL=http://app.carsties.com
+      - NEXTAUTH_URL_INTERNAL=http://web-app:3000
+      - API_URL=http://gateway-svc/
+      - ID_URL=http://id.carsties.com
+      - NEXT_PUBLIC_NOTIFY_URL=http://gateway-svc/notifications
+      - VIRTUAL_HOST=app.carsties.com
+      - VIRTUAL_PORT=3000
+    networks:
+      custom:
+  nginx-proxy:
+    image: nginxproxy/nginx-proxy
+    ports:
+      - 81:81
+      - 443:443
+    networks:
+      custom:
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+      - ./devcerts:/etc/nginx/certs
