@@ -6,7 +6,7 @@ builder.Services.AddReverseProxy()
     .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
+    .AddJwtBearer(options => 
     {
         options.Authority = builder.Configuration["IdentityServiceUrl"];
         options.RequireHttpsMetadata = false;
@@ -25,7 +25,7 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-app.UseCors("customPolicy");
+app.UseCors();
 
 app.MapReverseProxy();
 
